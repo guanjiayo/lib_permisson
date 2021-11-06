@@ -1,155 +1,234 @@
-# PermissionX
+[项目来源](https://github.com/guolindev/PermissionX)
 
-[中文文档](https://blog.csdn.net/sinyu890807/category_10108528.html)
+使用说明:
 
-PermissionX is an extension Android library that makes Android runtime permission request extremely easy. You can use it for basic permission request occasions or handle more complex conditions, like showing rationale dialog or go to app settings for allowance manually.
+#### 基本使用
 
-## Quick Setup
+```kotlin
 
-Edit your build.gradle file and add below dependency.
+class MainActivity : AppCompatActivity() {
 
-```groovy
-repositories {
-  google()
-  mavenCentral()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        PermissionX.init(this)
+            .permissions(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION)
+            .onExplainRequestReason { scope, deniedList ->
+				val message = "拍照功能需要您同意相册和定位权限"
+				val ok = "确定"
+                scope.showRequestReasonDialog(deniedList, message, ok)
+            }
+            .onForwardToSettings { scope, deniedList ->
+				val message = "您需要去设置当中同意相册和定位权限"
+				val ok = "确定"
+                scope.showForwardToSettingsDialog(deniedList, message, ok)
+            }
+            .request { _, _, _ ->
+                takePicture()
+            }
+    }
+
+    fun takePicture() {
+        Toast.makeText(this, "开始拍照", Toast.LENGTH_SHORT).show()
+    }
+
 }
 
-dependencies {
-    implementation 'com.guolindev.permissionx:permissionx:1.6.1'
-}
 ```
 
-That's all. Now you are ready to go.
+#### 情况一:
 
-## Basic Usage
+```kotlin
+PermissionX.init(this)
+    .permissions(Manifest.permission.CAMERA, Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE)
+	.explainReasonBeforeRequest()
+    .onExplainRequestReason { scope, deniedList, beforeRequest ->
+        if (beforeRequest) {
+            //首次申请权限,弹我们自己的Dialog提醒用户
+            showRequestReasonDialog(deniedList, "为了保证程序正常工作，请您同意以下权限申请", "我已明白")
+        } else {
+            //再次申请权限,过滤其他权限,保留摄像机权限为必要权限
+            //如果不需要过滤,按原来的即可    
+            val filteredList = deniedList.filter {
+                it == Manifest.permission.CAMERA
+            }
+            showRequestReasonDialog(filteredList, "摄像机权限是程序必须依赖的权限", "我已明白")
+        }
+    }
+```
 
-Use PermissionX to request Android runtime permissions is extremely simple.
+#### 特殊权限
 
-For example. If you want to request READ_CONTACTS, CAMERA and CALL_PHONE permissions, declared them in the AndroidManifest.xml first.
+- 后台定位权限申请,由于该权限时api29(Android10)才添加的,因此这样写,低版本的用另外的定位权限即可
 
-```xml
+```kotlin
+
+val permissionList = ArrayList<String>()
+permissionList.add(Manifest.permission.ACCESS_FINE_LOCATION)
+if (Build.VERSION.SDK_INT >= 29) {
+    permissionList.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+}
+PermissionX.init(this)
+    .permissions(permissionList)
+    .request { allGranted, grantedList, deniedList ->
+        if (allGranted) {
+            Toast.makeText(activity, "所有申请的权限都已通过", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(activity, "您拒绝了如下权限：$deniedList", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+```
+
+- 悬浮窗权限
+
+```
+
+PermissionX.init(activity)
+    .permissions(Manifest.permission.SYSTEM_ALERT_WINDOW)
+    .onExplainRequestReason { scope, deniedList ->
+        val message = "PermissionX需要您同意以下权限才能正常使用"
+        scope.showRequestReasonDialog(deniedList, message, "Allow", "Deny")
+    }
+    .request { allGranted, grantedList, deniedList ->
+        if (allGranted) {
+            Toast.makeText(activity, "所有申请的权限都已通过", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(activity, "您拒绝了如下权限：$deniedList", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+//--清单文件--
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.permissionx.app">
+package="com.permissionx.app">
 
-	<uses-permission android:name="android.permission.READ_CONTACTS" />
-	<uses-permission android:name="android.permission.CAMERA" />
-	<uses-permission android:name="android.permission.CALL_PHONE" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
 </manifest>
+
 ```
 
-Then you can use below codes to request.
+- 修改设置权限
 
-```kotlin
-PermissionX.init(activity)
-    .permissions(Manifest.permission.READ_CONTACTS, Manifest.permission.CAMERA, Manifest.permission.CALL_PHONE)
-    .request { allGranted, grantedList, deniedList ->
-        if (allGranted) {
-            Toast.makeText(this, "All permissions are granted", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, "These permissions are denied: $deniedList", Toast.LENGTH_LONG).show()
-        }
-    }
 ```
 
-Pass any instance of FragmentActivity or Fragment into **init** method, and specify the permissions that you want to request in the **permissions** method, then call **request** method for actual request.
-
-The request result will be callback in the request lambda. **allGranted** means if all permissions that you requested are granted by user, maybe true or false. **grantedList** holds all granted permissions and **deniedList** holds all denied permissions.
-
-<img src="screenshots/1.gif" width="32%" />
-
-Now you can write your own logic in the request lambda to handle the specific cases of your app.
-
-## More Usage
-
-As you know, Android provide **shouldShowRequestPermissionRationale** method to indicate us if we should show a rationale dialog to explain to user why we need this permission. Otherwise user may deny the permissions we requested and checked **never ask again** option.
-
-To simplify this process, PermissionX provide **onExplainRequestReason** method. Chain this method before **request** method, If user deny one of the permissions, **onExplainRequestReason** method will get callback first. Then you can call **showRequestReasonDialog** method to explain to user why these permissions are necessary like below.
-
-```kotlin
 PermissionX.init(activity)
-    .permissions(Manifest.permission.READ_CONTACTS, Manifest.permission.CAMERA, Manifest.permission.CALL_PHONE)
+    .permissions(Manifest.permission.WRITE_SETTINGS)
+    //...
+
+//---清单文件---
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.permissionx.app">
+    
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+
+</manifest>
+
+
+```
+
+- 管理外部存储权限
+
+```
+
+if (Build.VERSION.SDK_INT >= 30) {
+    PermissionX.init(this)
+        .permissions(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
+        //...
+}
+
+//---清单文件---
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.permissionx.app">
+    
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+</manifest>
+
+```
+
+- "允许安装未知来源的应用" 权限
+
+```
+PermissionX.init(activity)
+    .permissions(Manifest.permission.REQUEST_INSTALL_PACKAGES)
     .onExplainRequestReason { scope, deniedList ->
-        scope.showRequestReasonDialog(deniedList, "Core fundamental are based on these permissions", "OK", "Cancel")
+        val message = "PermissionX需要您同意以下权限才能正常使用"
+        scope.showRequestReasonDialog(deniedList, message, "Allow", "Deny")
     }
     .request { allGranted, grantedList, deniedList ->
         if (allGranted) {
-            Toast.makeText(this, "All permissions are granted", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "所有申请的权限都已通过", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "These permissions are denied: $deniedList", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "您拒绝了如下权限：$deniedList", Toast.LENGTH_SHORT).show()
         }
     }
+
+//---清单文件----
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.permissionx.app">
+    
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+</manifest>
+
+
 ```
 
-**showRequestReasonDialog** method will prompt a rationale dialog with the information that second parameter provide. If user click positive button which shows text as third parameter provide, PermissionX will request again with the permissions that first parameter provide.
+- 蓝牙权限
 
-The fourth parameter as text for negative button is optional. If the denied permissions are necessary, you can ignore the fourth parameter and the dialog will be uncancelable. Which means user must allow these permissions for further usage.
+```
 
-<img src="screenshots/2.gif" width="32%" />
-
-Of course, user still may deny some permissions and checked **never ask again** option. In this case, each time we request these permissions again will be denied automatically. The only thing we could do is prompt to users they need to allow these permissions manually in app settings for continuation usage. But PermissionX did better.
-
-PermissionX provide **onForwardToSettings** method for handling this occasion. Chain this method before **request** method, If some permissions are "denied and never ask again" by user, **onForwardToSettings** method will get callback. Then you can call **showForwardToSettingsDialog** method like below.
-
-```kotlin
-PermissionX.init(activity)
-    .permissions(Manifest.permission.READ_CONTACTS, Manifest.permission.CAMERA, Manifest.permission.CALL_PHONE)
-    .onExplainRequestReason { scope, deniedList ->
-        scope.showRequestReasonDialog(deniedList, "Core fundamental are based on these permissions", "OK", "Cancel")
-    }
-    .onForwardToSettings { scope, deniedList ->
-        scope.showForwardToSettingsDialog(deniedList, "You need to allow necessary permissions in Settings manually", "OK", "Cancel")
-    }
-    .request { allGranted, grantedList, deniedList ->
-        if (allGranted) {
-            Toast.makeText(this, "All permissions are granted", Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, "These permissions are denied: $deniedList", Toast.LENGTH_LONG).show()
+val requestList = ArrayList<String>()
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    requestList.add(Manifest.permission.BLUETOOTH_SCAN)
+    requestList.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+    requestList.add(Manifest.permission.BLUETOOTH_CONNECT)
+}
+if (requestList.isNotEmpty()) {
+    PermissionX.init(activity)
+        .permissions(requestList)
+        .explainReasonBeforeRequest()
+        .onExplainRequestReason { scope, deniedList ->
+            val message = "PermissionX需要您同意以下权限才能正常使用"
+            scope.showRequestReasonDialog(deniedList, message, "Allow", "Deny")
         }
-    }
-```
+        .request { allGranted, grantedList, deniedList ->
+            if (allGranted) {
+                Toast.makeText(activity, "所有申请的权限都已通过", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(activity, "您拒绝了如下权限：$deniedList", Toast.LENGTH_SHORT).show()
+            }
+        }
+}
 
-The parameters in **onForwardToSettings** method are similar with **showRequestReasonDialog** method. When user click positive button, PermissionX will forward to the settings page of your app and user can turn on the necessary permissions very quickly. When user switch back to app, PermissionX will request the necessary permissions again automatically.
 
-<img src="screenshots/3.gif" width="32%" />
+//---清单文件----
 
-## Explain Before Request
-
-It is always a good manner to show the rationale dialog and explain to users why you need these permissions before you actually request them.
-
-To do that with PermissionX is quite simple. Just use **explainReasonBeforeRequest** method like below.
-
-```kotlin
-PermissionX.init(activity)
-    .permissions(Manifest.permission.READ_CONTACTS, Manifest.permission.CAMERA, Manifest.permission.CALL_PHONE)
-    .explainReasonBeforeRequest()
+<manifest>
+    <!-- Request legacy Bluetooth permissions on older devices. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+                     android:maxSdkVersion="30" />
+                     
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     ...
-```
-
-Now everything works like charm.
-
-<img src="screenshots/4.gif" width="32%" />
-
-## Dark Theme
-
-The rationale dialog provided by PermissionsX support Android dark theme automatically. If you change your device into dark theme, everything just works great.
-
-<img src="screenshots/5.gif" width="32%" />
-
-## License
+</manifest>
 
 ```
-Copyright (C) guolin, PermissionX Open Source Project
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+#### 情况三:
 
-     http://www.apache.org/licenses/LICENSE-2.0
+设置Dialog的主题颜色
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+```kotlin
+PermissionX.init(this)
+    .permissions(Manifest.permission.CAMERA, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.RECORD_AUDIO)
+    .setDialogTintColor(Color.parseColor("#008577"), Color.parseColor("#83e8dd"))
+    //...
 ```
