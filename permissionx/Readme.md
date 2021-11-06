@@ -1,4 +1,4 @@
-[项目来源](https://github.com/guolindev/PermissionX)
+[项目来源:  https://github.com/guolindev/PermissionX 郭神封装的框架](https://github.com/guolindev/PermissionX)
 
 使用说明:
 
