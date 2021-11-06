@@ -1,4 +1,6 @@
-[项目来源](https://github.com/guolindev/PermissionX)
+[项目来源:  https://github.com/guolindev/PermissionX 郭神封装的框架](https://github.com/guolindev/PermissionX)
+
+这里仅用作个人对库的测试,以及自己学习框架使用
 
 使用说明:
 
